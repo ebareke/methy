@@ -1,0 +1,43 @@
+#!/bin/bash
+
+die() {
+echo "$1" >&2
+exit 1
+}
+
+while [ "$#" -gt 0 ]; do
+case "$1" in
+-sn) sample_name="$2"; shift 2;;
+-gb) genome_build="$2"; shift 2;;
+-bf) bedgraph_folder="$2"; shift 2;;
+--sample_name=*) sample_name="${1#*=}"; shift 1;;
+--genome_build=*) genome_build="${1#*=}"; shift 1;;
+--bedgraph_folder=*) bedgraph_folder="${1#*=}"; shift 1;;
+--sample_name|--genome_build|--bedgraph_folder) die "$1 requires an argument";;
+-*) die "unknown option: $1";;
+*) die "unrecognized argument: $1";;
+esac
+done
+
+BASEDIR=$(readlink -f "${0%/*}")
+if [ "$genome_build" = "hg19" ]; then
+specie="Hsapiens"
+else
+specie="Mmusculus"
+fi
+
+refmain="/project/6007495/barekeer/pipelines/core/genomes/${specie}/${genome_build}"
+refsize="${refmain}/biscuit/${genome_build}.chrom.sizes"
+
+cd "$bedgraph_folder" || die "Directory $bedgraph_folder does not exist"
+
+cd "${bedgraph_folder}/${sample_name}" || die "Directory ${bedgraph_folder}/${sample_name} does not exist"
+
+mv bismark misc
+cp misc/${sample_name}.deduplicated.bedGraph.gz ./${sample_name}.bedGraph.gz
+gunzip ${sample_name}.bedGraph.gz
+awk -F"\t" '{print $1"\t"$2"\t"$3"\t"$4}' ${sample_name}.bedGraph > ${sample_name}_CpG.bedGraph
+python "${BASEDIR}/stretch_bed.py" "${sample_name}_CpG.bedGraph" "${sample_name}_CpG.igv" "$sample_name"
+igvtools toTDF "${sample_name}_CpG.igv" "${sample_name}_stretched_CpG.tdf" "$refsize"
+rm -rf igv.log
+cd -
